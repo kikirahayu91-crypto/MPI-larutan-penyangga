@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MPI - Hidrolisis Garam | Kiki Rahayu</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': {
+                            100: '#E0F7FA', // Biru muda pastel
+                            500: '#81D4FA', // Biru muda solid
+                            800: '#0277BD', // Biru tua untuk teks
+                        },
+                        'brand-rose': {
+                            100: '#FCE4EC',
+                            500: '#B76E79', // Rose gold
+                            600: '#9C5863',
+                        },
+                        'brand-yellow': {
+                            100: '#FFF9C4', // Kuning muda
+                            500: '#FDD835',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #E0F7FA; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-gray-800 antialiased min-h-screen flex flex-col">
+    <div id="root" class="flex-grow flex flex-col h-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        
+        // --- REUSABLE COMPONENTS ---
+
+        const Card = ({ children, className = "" }) => (
+            <div class={`glass-panel rounded-2xl p-6 md:p-8 animate-fade-in-up ${className}`}>
+                {children}
+            </div>
+        );
+
+        const Button = ({ children, onClick, variant = 'primary', disabled = false, className="" }) => {
+            const baseStyle = "px-6 py-3 rounded-full font-bold transition-all duration-300 transform active:scale-95 shadow-md disabled:opacity-50 disabled:cursor-not-allowed";
+            const variants = {
+                primary: "bg-brand-rose-500 text-white hover:bg-brand-rose-600 hover:shadow-lg",
+                secondary: "bg-brand-blue-500 text-white hover:bg-brand-blue-800",
+                outline: "border-2 border-brand-rose-500 text-brand-rose-600 hover:bg-brand-rose-100",
+                success: "bg-green-500 text-white",
+                danger: "bg-red-500 text-white"
+            };
+            return (
+                <button onClick={onClick} disabled={disabled} class={`${baseStyle} ${variants[variant]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
+
+        const InfoBox = ({ children, type = 'info' }) => {
+            const types = {
+                info: "bg-brand-blue-100 border-l-4 border-brand-blue-500 text-brand-blue-800",
+                warning: "bg-brand-yellow-100 border-l-4 border-brand-yellow-500 text-yellow-800",
+                success: "bg-green-100 border-l-4 border-green-500 text-green-800",
+                error: "bg-red-100 border-l-4 border-red-500 text-red-800"
+            };
+            return (
+                <div class={`p-4 rounded-r-lg my-4 animate-fade-in-up ${types[type]}`}>
+                    {children}
+                </div>
+            );
+        };
+
+        
+        // Komponen Interaksi Standar (Pilihan Ganda / Benar Salah)
+        const StandardInteraction = ({ instruction, options, correctAnswerIndex, feedbackCorrect, feedbackIncorrect, explanation }) => {
+            const [selected, setSelected] = useState(null);
+            const [showResult, setShowResult] = useState(false);
+
+            const handleSelect = (index) => {
+                if (showResult) return; // Prevent changing answer after submission
+                setSelected(index);
+                setShowResult(true);
+            };
+
+            const isCorrect = selected === correctAnswerIndex;
+
+            return (
+                <div class="bg-white rounded-xl p-5 border-2 border-brand-rose-100 shadow-sm my-6">
+                    <div class="flex items-start gap-3 mb-4">
+                        <div class="bg-brand-yellow-500 text-white p-2 rounded-lg mt-1">
+                            <i class="fas fa-question-circle"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-brand-rose-600 mb-1">Aksi Diperlukan!</h4>
+                            <p class="text-gray-700 font-medium">{instruction}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3 mt-4">
+                        {options.map((opt, index) => {
+                            let btnStyle = "w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ";
+                            if (!showResult) {
+                                btnStyle += "border-gray-200 hover:border-brand-rose-500 hover:bg-brand-rose-50";
+                            } else {
+                                if (index === correctAnswerIndex) {
+                                    btnStyle += "border-green-500 bg-green-50 text-green-800 font-bold";
+                                } else if (index === selected) {
+                                    btnStyle += "border-red-500 bg-red-50 text-red-800";
+                                } else {
+                                    btnStyle += "border-gray-200 opacity-50";
+                                }
+                            }
+
+                            return (
+                                <button 
+                                    key={index} 
+                                    onClick={() => handleSelect(index)}
+                                    class={btnStyle}
+                                    disabled={showResult}
+                                >
+                                    <div class="flex justify-between items-center">
+                                        <span>{opt}</span>
+                                        {showResult && index === correctAnswerIndex && <i class="fas fa-check text-green-500"></i>}
+                                        {showResult && index === selected && index !== correctAnswerIndex && <i class="fas fa-times text-red-500"></i>}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {showResult && (
+                        <div class="mt-6 animate-fade-in-up">
+                            <InfoBox type={isCorrect ? 'success' : 'error'}>
+                                <strong>{isCorrect ? 'Tepat Sekali!' : 'Kurang Tepat!'}</strong> {isCorrect ? feedbackCorrect : feedbackIncorrect}
+                            </InfoBox>
+                            <div class="bg-brand-blue-100 p-4 rounded-lg mt-3 text-sm">
+                                <span class="font-bold block mb-1 text-brand-blue-800"><i class="fas fa-lightbulb text-yellow-500 mr-2"></i>Penjelasan Konseptual:</span>
+                                {explanation}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        
+        // Komponen Interaksi Menjodohkan
+        const MatchingInteraction = ({ instruction, items, options, correctAnswers, explanation }) => {
+            const [answers, setAnswers] = useState(items.map(() => null));
+            const [isSubmitted, setIsSubmitted] = useState(false);
+
+            const handleSelect = (itemIndex, optionIndex) => {
+                if (isSubmitted) return;
+                const newAnswers = [...answers];
+                newAnswers[itemIndex] = optionIndex;
+                setAnswers(newAnswers);
+            };
+
+            const handleSubmit = () => {
+                setIsSubmitted(true);
+            };
+
+            const isAllAnswered = answers.every(a => a !== null);
+            const isAllCorrect = isSubmitted && answers.every((ans, idx) => ans === correctAnswers[idx]);
+
+            return (
+                <div class="bg-white rounded-xl p-5 border-2 border-brand-rose-100 shadow-sm my-6">
+                     <div class="flex items-start gap-3 mb-4">
+                        <div class="bg-brand-yellow-500 text-white p-2 rounded-lg mt-1">
+                            <i class="fas fa-puzzle-piece"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-brand-rose-600 mb-1">Aksi Diperlukan!</h4>
+                            <p class="text-gray-700 font-medium">{instruction}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 mt-6">
+                        {items.map((item, itemIdx) => (
+                            <div key={itemIdx} class="flex flex-col md:flex-row md:items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div class="font-bold text-lg mb-2 md:mb-0 w-32">{item}</div>
+                                <div class="flex gap-2 flex-wrap">
+                                    {options.map((opt, optIdx) => {
+                                        let btnClass = "px-3 py-1 rounded-md text-sm font-medium border transition-colors ";
+                                        if (!isSubmitted) {
+                                            btnClass += answers[itemIdx] === optIdx 
+                                                ? "bg-brand-blue-500 text-white border-brand-blue-500" 
+                                                : "bg-white text-gray-600 border-gray-300 hover:bg-brand-blue-100";
+                                        } else {
+                                            if (optIdx === correctAnswers[itemIdx]) {
+                                                btnClass += "bg-green-500 text-white border-green-500 shadow-sm"; // The correct answer
+                                            } else if (answers[itemIdx] === optIdx && optIdx !== correctAnswers[itemIdx]) {
+                                                btnClass += "bg-red-500 text-white border-red-500"; // Wrong selected answer
+                                            } else {
+                                                btnClass += "bg-gray-100 text-gray-400 border-gray-200 opacity-50"; // Not selected, not correct
+                                            }
+                                        }
+
+                                        return (
+                                            <button 
+                                                key={optIdx}
+                                                onClick={() => handleSelect(itemIdx, optIdx)}
+                                                disabled={isSubmitted}
+                                                class={btnClass}
+                                            >
+                                                {opt}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {isSubmitted && (
+                                    <div class="mt-2 md:mt-0 md:ml-4 w-8 text-center">
+                                        {answers[itemIdx] === correctAnswers[itemIdx] 
+                                            ? <i class="fas fa-check-circle text-green-500 text-xl"></i>
+                                            : <i class="fas fa-times-circle text-red-500 text-xl"></i>
+                                        }
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {!isSubmitted ? (
+                        <Button 
+                            onClick={handleSubmit} 
+                            disabled={!isAllAnswered} 
+                            className="w-full mt-6"
+                        >
+                            Cek Semua Jawaban
+                        </Button>
+                    ) : (
+                        <div class="mt-6 animate-fade-in-up">
+                             <InfoBox type={isAllCorrect ? 'success' : 'error'}>
+                                {isAllCorrect 
+                                    ? "Luar biasa! Pemahamanmu sangat kuat. Semua pasangan benar." 
+                                    : "Masih ada yang belum tepat, mari perhatikan mana yang salah dan periksa penjelasannya."}
+                            </InfoBox>
+                            <div class="bg-brand-blue-100 p-4 rounded-lg mt-3 text-sm">
+                                <span class="font-bold block mb-1 text-brand-blue-800"><i class="fas fa-lightbulb text-yellow-500 mr-2"></i>Penjelasan Konseptual:</span>
+                                {explanation}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        
+        // --- STAGE COMPONENTS ---
+
+        const Stage1 = ({ onNext }) => (
+            <Card>
+                <div class="text-center mb-8">
+                    <div class="inline-block p-4 bg-brand-rose-100 rounded-full mb-4">
+                        <i class="fas fa-flask text-4xl text-brand-rose-500 animate-pulse-slow"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold text-brand-blue-800 mb-4">Selamat Datang di Laboratorium Virtual!</h2>
+                    <p class="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto">
+                        Halo, saintis muda SMAN 1 Parongpong! Pernahkah kalian bertanya-tanya, apakah garam selalu terasa asin dan bersifat netral? Ternyata, di dunia kimia, 'garam' menyimpan rahasia besar saat bertemu dengan air! Mari kita ungkap misteri ini bersama.
+                    </p>
+                </div>
+
+                <StandardInteraction 
+                    instruction="Perhatikan tiga jenis bahan sehari-hari berikut yang merupakan senyawa garam kimia: Garam Dapur (NaCl), Pupuk ZA ((NH4)2SO4), dan Soda Kue (NaHCO3). Menurutmu, jika ketiganya dilarutkan dalam air dan diuji dengan kertas lakmus, apa yang akan terjadi?"
+                    options={[
+                        "Semuanya tidak akan mengubah warna kertas lakmus merah maupun biru (Semua Netral).",
+                        "Ketiganya akan menunjukkan sifat yang berbeda-beda (Ada yang asam, basa, atau netral)."
+                    ]}
+                    correctAnswerIndex={1}
+                    feedbackCorrect="Instingmu tajam! Garam tidak selalu netral."
+                    feedbackIncorrect="Banyak yang mengira begitu, tapi tahukah kamu ada rahasia di balik larutan garam?"
+                    explanation="Faktanya, garam dapat bersifat asam, basa, atau netral tergantung dari asal asam dan basa pembentuknya. Peristiwa penentuan sifat inilah yang disebut Hidrolisis Garam. Mari kita pelajari lebih dalam!"
+                />
+
+                <div class="flex justify-end mt-8">
+                    <Button onClick={onNext} variant="primary">Mulai Eksplorasi <i class="fas fa-arrow-right ml-2"></i></Button>
+                </div>
+            </Card>
+        );
+
+        const Stage2 = ({ onNext, onPrev }) => {
+            const [activeTab, setActiveTab] = useState(0);
+            
+            const tabs = [
+                { title: "Kuat + Kuat", icon: "fa-equals", color: "text-gray-500", content: "Garam dari Asam Kuat + Basa Kuat: Tidak terhidrolisis (pH = 7). Contoh: NaCl, KNO3." },
+                { title: "Lemah + Kuat", icon: "fa-arrow-up", color: "text-blue-500", content: "Garam dari Asam Lemah + Basa Kuat: Hidrolisis parsial (anion). Bersifat Basa (pH > 7). Contoh: CH3COONa." },
+                { title: "Kuat + Lemah", icon: "fa-arrow-down", color: "text-red-500", content: "Garam dari Asam Kuat + Basa Lemah: Hidrolisis parsial (kation). Bersifat Asam (pH < 7). Contoh: NH4Cl." },
+                { title: "Lemah + Lemah", icon: "fa-balance-scale", color: "text-purple-500", content: "Garam dari Asam Lemah + Basa Lemah: Hidrolisis total. Sifat bergantung pada nilai Ka dan Kb." },
+            ];
+
+            return (
+                <Card>
+                    <h2 class="text-2xl font-bold text-brand-blue-800 mb-4 border-b-2 border-brand-rose-100 pb-2">Pendalaman Materi: Mekanisme Hidrolisis</h2>
+                    
+                    <InfoBox type="info">
+                        <strong>Konsep Dasar:</strong> Hidrolisis berasal dari kata <em>hidro</em> (air) dan <em>lisis</em> (penguraian). Hidrolisis garam terjadi ketika kation atau anion dari basa lemah atau asam lemah bereaksi dengan air. <strong>Ingat kuncinya: Yang lemah yang bereaksi dengan air!</strong>
+                    </InfoBox>
+
+                    <StandardInteraction 
+                        instruction="Analisis senyawa Natrium Asetat (CH3COONa). Apakah garam ini terbentuk dari Asam Kuat dan Basa Lemah?"
+                        options={["Benar", "Salah"]}
+                        correctAnswerIndex={1}
+                        feedbackCorrect="Bagus sekali analisisnya!"
+                        feedbackIncorrect="Ups, coba perhatikan kembali komponen penyusunnya."
+                        explanation={<>CH3COONa terurai menjadi ion Na<sup>+</sup> dan CH3COO<sup>-</sup>. Ion Na<sup>+</sup> berasal dari NaOH (Basa Kuat), sedangkan ion CH3COO<sup>-</sup> berasal dari CH3COOH (Asam Lemah). Jadi, garam ini berasal dari <strong>Basa Kuat dan Asam Lemah</strong>.</>}
+                    />
+
+                    <div class="mt-8 mb-6">
+                        <h3 class="text-xl font-bold text-brand-rose-600 mb-3">Jenis-jenis Garam & Sifatnya</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                            {tabs.map((tab, idx) => (
+                                <button 
+                                    key={idx}
+                                    onClick={() => setActiveTab(idx)}
+                                    class={`p-3 rounded-lg border-2 text-sm font-bold flex flex-col items-center justify-center gap-2 transition-all ${activeTab === idx ? 'border-brand-rose-500 bg-brand-rose-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}
+                                >
+                                    <i class={`fas ${tab.icon} ${tab.color} text-lg`}></i>
+                                    {tab.title}
+                                </button>
+                            ))}
+                        </div>
+                        <div class="bg-brand-yellow-100 p-4 rounded-lg min-h-[100px] flex items-center shadow-inner">
+                            <p class="text-gray-800 text-lg">{tabs[activeTab].content}</p>
+                        </div>
+                    </div>
+
+                    <MatchingInteraction 
+                        instruction="Uji pemahamanmu! Pasangkan jenis garam berikut dengan sifat larutannya jika dilarutkan dalam air."
+                        items={["KCl", "NH4NO3", "KCN"]}
+                        options={["Asam", "Basa", "Netral"]}
+                        correctAnswers={[2, 0, 1]} // KCl->Netral(2), NH4NO3->Asam(0), KCN->Basa(1)
+                        explanation={
+                            <ul class="list-disc pl-5 space-y-1">
+                                <li><strong>KCl</strong> berasal dari (KOH - Basa Kuat & HCl - Asam Kuat) &rarr; Netral.</li>
+                                <li><strong>NH4NO3</strong> berasal dari (NH4OH - Basa Lemah & HNO3 - Asam Kuat) &rarr; Asam.</li>
+                                <li><strong>KCN</strong> berasal dari (KOH - Basa Kuat & HCN - Asam Lemah) &rarr; Basa.</li>
+                            </ul>
+                        }
+                    />
+
+                    <div class="flex justify-between mt-8 pt-4 border-t border-gray-200">
+                        <Button onClick={onPrev} variant="outline"><i class="fas fa-arrow-left mr-2"></i> Kembali</Button>
+                        <Button onClick={onNext} variant="primary">Lanjut Evaluasi <i class="fas fa-arrow-right ml-2"></i></Button>
+                    </div>
+                </Card>
+            );
+        };
+
+        const Stage3 = ({ onPrev, onReset }) => (
+            <Card>
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-brand-blue-800">Evaluasi Akhir & Refleksi</h2>
+                    <p class="text-gray-600 mt-2">Mari terapkan konsep yang telah dipelajari dalam kasus nyata.</p>
+                </div>
+
+                <StandardInteraction 
+                    instruction="Sebagai asisten lab Ibu Kiki, kamu ditugaskan membuat larutan penyangga (buffer). Temanmu menyarankan mencampurkan 100 mL HCl 0.1 M dengan 100 mL NH3 0.1 M. Apakah campuran tersebut akan menghasilkan larutan penyangga?"
+                    options={[
+                        "Ya, karena itu campuran dari larutan asam dan basa.",
+                        "Tidak, campuran tersebut justru membentuk larutan garam yang terhidrolisis."
+                    ]}
+                    correctAnswerIndex={1}
+                    feedbackCorrect="Brilian! Insting kimia-mu sangat tajam dan tepat."
+                    feedbackIncorrect="Analisisnya kurang mendalam nih. Ingat konsep stoikiometri reaksi kimia."
+                    explanation={
+                        <span>
+                            Karena mol HCl (10 mmol) sama dengan mol NH3 (10 mmol), keduanya bereaksi <strong>habis</strong> (tidak ada sisa pereaksi lemah). Campuran ini hanya menyisakan produk yaitu garam NH4Cl. Garam ini berasal dari basa lemah dan asam kuat, sehingga mengalami hidrolisis parsial dan bersifat asam (bukan larutan penyangga yang mensyaratkan adanya sisa komponen lemah).
+                        </span>
+                    }
+                />
+
+                <div class="bg-gradient-to-r from-brand-blue-100 to-brand-rose-100 p-6 rounded-xl mt-8 text-center shadow-sm">
+                    <div class="text-brand-rose-500 text-5xl mb-4">
+                        <i class="fas fa-graduation-cap"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">Misi Selesai!</h3>
+                    <p class="text-gray-700">
+                        Selamat! Kalian telah berhasil menjelajahi dunia hidrolisis garam. Ingat, tidak semua garam itu netral. Kelemahan salah satu komponen (asam/basa) pembentuknya justru yang membuatnya bereaksi dengan air (terhidrolisis) dan menentukan sifat larutannya. Terus semangat bereksplorasi!
+                    </p>
+                </div>
+
+                <div class="flex justify-between mt-8 pt-4 border-t border-gray-200">
+                    <Button onClick={onPrev} variant="outline"><i class="fas fa-arrow-left mr-2"></i> Kembali</Button>
+                    <Button onClick={onReset} variant="secondary"><i class="fas fa-redo mr-2"></i> Mulai Ulang</Button>
+                </div>
+            </Card>
+        );
+
+        const App = () => {
+            const [stage, setStage] = useState(1);
+
+            const nextStage = () => setStage(s => Math.min(3, s + 1));
+            const prevStage = () => setStage(s => Math.max(1, s - 1));
+            const resetApp = () => { setStage(1); window.scrollTo(0,0); };
+
+            // Simple progress bar
+            const progress = ((stage - 1) / 2) * 100;
+
+            return (
+                <div class="w-full max-w-4xl mx-auto p-4 md:p-6 flex-grow flex flex-col">
+                    {/* Header */}
+                    <header class="mb-6 flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border-b-4 border-brand-rose-500">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-brand-blue-500 p-3 rounded-full text-white">
+                                <i class="fas fa-atom text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="font-bold text-xl md:text-2xl text-brand-blue-800 tracking-tight">MPI Hidrolisis Garam</h1>
+                                <p class="text-sm text-gray-500 font-medium">Kimia Kelas 12 Fase F</p>
+                            </div>
+                        </div>
+                        <div class="text-center md:text-right text-sm">
+                            <p class="font-bold text-brand-rose-600">Kiki Rahayu</p>
+                            <p class="text-gray-500"><i class="fas fa-school text-brand-yellow-500 mr-1"></i> SMAN 1 Parongpong</p>
+                        </div>
+                    </header>
+
+                    {/* Progress Indicator */}
+                    <div class="mb-6 px-2">
+                        <div class="flex justify-between text-xs font-bold text-brand-blue-800 mb-2">
+                            <span class={stage >= 1 ? 'opacity-100' : 'opacity-50'}>Pengantar</span>
+                            <span class={stage >= 2 ? 'opacity-100' : 'opacity-50'}>Pendalaman</span>
+                            <span class={stage >= 3 ? 'opacity-100' : 'opacity-50'}>Evaluasi</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-brand-rose-500 h-2.5 rounded-full transition-all duration-500 ease-in-out" style={{ width: `${progress}%` }}></div>
+                        </div>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <main class="flex-grow pb-10">
+                        {stage === 1 && <Stage1 onNext={nextStage} />}
+                        {stage === 2 && <Stage2 onNext={nextStage} onPrev={prevStage} />}
+                        {stage === 3 && <Stage3 onPrev={prevStage} onReset={resetApp} />}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
